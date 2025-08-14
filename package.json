@@ -1,0 +1,13 @@
+{
+  "name": "dynamic-mcp-server",
+  "version": "1.0.0", 
+  "type": "module",
+  
+  "scripts": {
+    "inspector": "npx @modelcontextprotocol/inspector build/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.2",
+    "zod": "^3.24.4"
+  }
+}
