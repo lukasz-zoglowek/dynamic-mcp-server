@@ -1,7 +1,20 @@
 #!/usr/bin/env node
 
+/**
+ * Dynamic MCP Server Implementation
+ * 
+ * This class implements a Model Context Protocol (MCP) server that demonstrates
+ * dynamic tool evolution. The server starts with a single "greet" tool and
+ * progressively unlocks additional tools based on user interactions.
+ * 
+ * Key Features:
+ * - Progressive tool unlocking (greet → calculate, get_status, followup)
+ * - Session-isolated state management (call counts, tool availability)
+ * - Real-time client notifications when tool list changes
+ * - Safe mathematical expression evaluation
+ */
+
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-// Switched from stdio transport to HTTP streaming transport
 import {
     CallToolRequestSchema,
     ErrorCode,
@@ -19,6 +32,7 @@ export class DynamicMCPServer {
             {
                 capabilities: {
                     tools: {
+                        // Enable notifications when tool list changes
                         listChanged: true
                     },
                 },
@@ -31,8 +45,15 @@ export class DynamicMCPServer {
         this.registerInitialTools();
     }
 
+    /**
+     * Configure MCP protocol request handlers
+     * 
+     * Sets up handlers for the two main MCP tool operations:
+     * - tools/list: Return available tools to the client
+     * - tools/call: Execute a specific tool with provided arguments
+     */
     setupHandlers() {
-        // Handle tools/list requests
+        // Handle tools/list requests - return current available tools
         this.server.setRequestHandler(ListToolsRequestSchema, async () => {
             const tools = Array.from(this.tools.entries()).map(([name, config]) => ({
                 name,
@@ -44,7 +65,7 @@ export class DynamicMCPServer {
             return { tools };
         });
 
-        // Handle tools/call requests
+        // Handle tools/call requests - execute tools and trigger dynamic behavior
         this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const { name, arguments: args } = request.params;
             const tool = this.tools.get(name);
@@ -59,7 +80,7 @@ export class DynamicMCPServer {
 
                 const result = await tool.handler(args || {});
 
-                // Dynamic behavior: modify tools after each call
+                // Dynamic behavior: modify available tools after each call
                 await this.updateToolsAfterCall(name);
 
                 return result;
@@ -76,9 +97,16 @@ export class DynamicMCPServer {
         });
     }
 
+    /**
+     * Register the initial tool set
+     * 
+     * The server starts with only the "greet" tool available.
+     * This demonstrates the progressive tool unlocking concept.
+     */
     registerInitialTools() {
         console.error("[Server] Registering initial tools");
 
+        // The only tool available at startup - the gateway to unlocking others
         this.addTool("greet", {
             schema: {
                 type: "object",
@@ -97,9 +125,16 @@ export class DynamicMCPServer {
                     text: `Hello, ${name}! This server has been called ${this.callCount} times.`
                 }]
             })
-        }, false);
+        }, false); // Don't notify on initial registration
     }
 
+    /**
+     * Add a tool to the registry
+     * 
+     * @param {string} name - Tool identifier
+     * @param {Object} config - Tool configuration (schema, description, handler)
+     * @param {boolean} notify - Whether to notify clients of tool list changes
+     */
     addTool(name, config, notify = false) {
         this.tools.set(name, config);
         console.error(`[Server] Added tool: ${name}`);
@@ -109,6 +144,13 @@ export class DynamicMCPServer {
         }
     }
 
+    /**
+     * Remove a tool from the registry
+     * 
+     * @param {string} name - Tool identifier to remove
+     * @param {boolean} notify - Whether to notify clients of tool list changes
+     * @returns {boolean} - Whether the tool was successfully removed
+     */
     removeTool(name, notify = false) {
         const removed = this.tools.delete(name);
         if (removed) {
@@ -120,8 +162,16 @@ export class DynamicMCPServer {
         return removed;
     }
 
+    /**
+     * Dynamic tool evolution logic
+     * 
+     * This method implements the core dynamic behavior of the server.
+     * When specific tools are called, it unlocks new capabilities.
+     * 
+     * @param {string} calledTool - The name of the tool that was just executed
+     */
     async updateToolsAfterCall(calledTool) {
-        // If greet was called, add the other core tools
+        // Tool unlocking: After greeting, make additional tools available
         if (calledTool === "greet") {
             this.addTool("calculate", {
                 schema: {
@@ -189,6 +239,13 @@ export class DynamicMCPServer {
         }
     }
 
+    /**
+     * Send notification to clients when tool list changes
+     * 
+     * Uses the MCP protocol's notification system to inform clients
+     * that they should refresh their tool list. This enables real-time
+     * discovery of new capabilities.
+     */
     async notifyToolsChanged() {
         try {
             await this.server.notification({
@@ -200,21 +257,36 @@ export class DynamicMCPServer {
         }
     }
 
+    /**
+     * Connect the MCP server to a transport layer
+     * 
+     * @param {Transport} transport - MCP transport implementation (HTTP, stdio, etc.)
+     */
     async connect(transport) {
         console.error("[Server] Starting Dynamic MCP Server...");
         await this.server.connect(transport);
     }
 
+    /**
+     * Safe mathematical expression evaluator
+     * 
+     * Evaluates basic mathematical expressions without using eval() for security.
+     * Supports: addition (+), subtraction (-), multiplication (*), division (/)
+     * 
+     * @param {string} expression - Mathematical expression to evaluate
+     * @returns {string} - Calculation result or error message
+     */
     evaluateExpression(expression) {
         try {
-            // Remove all whitespace
+            // Remove all whitespace for easier parsing
             const cleanExpression = expression.replace(/\s+/g, '');
             
-            // Find the operator and split the expression
+            // Parse the expression to find operator and operands
             let operator = null;
             let parts = null;
             
-            // Check for operators in order of precedence (to handle negative numbers)
+            // Check for operators in order of precedence
+            // Note: Handle negative numbers by checking operator position
             if (cleanExpression.includes('+')) {
                 operator = '+';
                 parts = cleanExpression.split('+');
